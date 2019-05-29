@@ -1,0 +1,53 @@
+- hosts: bootstraps
+  remote_user: centos
+  tasks:
+    - name: "create workspace folders"
+      file:
+        path: "{{ item }}"
+        state: directory
+      loop: [ "/home/centos/workspace", "/home/centos/workspace/beta-dcos-monitoring" ]
+
+    - name: "create beta-dcos-monitoring service account keypair"
+      command: "dcos security org service-accounts keypair /home/centos/workspace/beta-dcos-monitoring/beta-dcos-monitoring-private-key.pem /home/centos/workspace/beta-dcos-monitoring/beta-dcos-monitoring-public-key.pem"
+
+    - name: "create beta-dcos-monitoring service account"
+      command: "dcos security org service-accounts create -p /home/centos/workspace/beta-dcos-monitoring/beta-dcos-monitoring-public-key.pem -d 'beta-dcos-monitoring' beta-dcos-monitoring-principal"
+
+    - name: "create beta-dcos-monitoring service account secret"
+      command: "dcos security secrets create-sa-secret --strict /home/centos/workspace/beta-dcos-monitoring/beta-dcos-monitoring-private-key.pem beta-dcos-monitoring-principal beta-dcos-monitoring/service-account-secret"
+
+    # Permissions plethora
+    - name: "beta-dcos-monitoring permissions"
+      command: "{{ item }}"
+      loop:
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:adminrouter:ops:ca:rw full"
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:adminrouter:ops:ca:ro full"
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:mesos:agent:framework:role:slave_public read"
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:mesos:master:framework:role:beta-dcos-monitoring-role create"
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:mesos:master:framework:role:slave_public read"
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:mesos:master:framework:role:slave_public/beta-dcos-monitoring-role read"
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:mesos:master:framework:role:slave_public/beta-dcos-monitoring-role create"
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:mesos:master:reservation:principal:beta-dcos-monitoring-principal delete"
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:mesos:master:reservation:role:beta-dcos-monitoring-role create"
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:mesos:master:reservation:role:slave_public/beta-dcos-monitoring-role create"
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:mesos:master:task:user:nobody create"
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:mesos:master:volume:principal:beta-dcos-monitoring-principal delete"
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:mesos:master:volume:role:beta-dcos-monitoring-role create"
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:mesos:master:volume:role:slave_public/beta-dcos-monitoring-role create"
+        - "dcos security org users grant beta-dcos-monitoring-principal 'dcos:secrets:default:/beta-dcos-monitoring/*' full"
+        - "dcos security org users grant beta-dcos-monitoring-principal dcos:secrets:list:default:/beta-dcos-monitoring read"
+
+    - name: "prepare beta-dcos-monitoring-options.json"
+      copy:
+        dest: "/home/centos/workspace/beta-dcos-monitoring/beta-dcos-monitoring-options.json"
+        content: |
+          {
+              "service": {
+                  "name":"beta-dcos-monitoring",
+                  "service_account_secret": "beta-dcos-monitoring/service-account-secret",
+                  "service_account": "beta-dcos-monitoring-principal"
+              }
+          }
+
+    - name: "Install beta-dcos-monitoring"
+      command: "dcos package install beta-dcos-monitoring --options=/home/centos/workspace/beta-dcos-monitoring/beta-dcos-monitoring-options.json --yes"
