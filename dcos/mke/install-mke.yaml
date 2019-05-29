@@ -1,0 +1,38 @@
+- hosts: bootstraps
+  remote_user: centos
+  tasks:
+    - name: "create workspace folders"
+      file:
+        path: "{{ item }}"
+        state: directory
+      loop: [ "/home/centos/workspace", "/home/centos/workspace/mke" ]
+
+    - name: "create MKE service account keypair"
+      command: "dcos security org service-accounts keypair /home/centos/workspace/mke/mke-private-key.pem /home/centos/workspace/mke/mke-public-key.pem"
+
+    - name: "create MKE service account"
+      command: "dcos security org service-accounts create -p /home/centos/workspace/mke/mke-public-key.pem -d 'MKE Service Account' mke-service-account"
+
+    - name: "create MKE service account secret"
+      command: "dcos security secrets create-sa-secret --strict /home/centos/workspace/mke/mke-private-key.pem mke-service-account kubernetes/service-account-secret"
+
+    - name: "set necessary permissions"
+      command: "{{ item }}"
+      loop:
+        - "dcos security org users grant mke-service-account dcos:mesos:master:reservation:role:kubernetes-role create"
+        - "dcos security org users grant mke-service-account dcos:mesos:master:framework:role:kubernetes-role create"
+        - "dcos security org users grant mke-service-account dcos:mesos:master:task:user:nobody create"
+
+    - name: "prepare mke-options.json"
+      copy:
+        dest: "/home/centos/workspace/mke/mke-options.json"
+        content: |
+          {
+              "service": {
+                  "service_account": "mke-service-account",
+                  "service_account_secret": "kubernetes/service-account-secret"
+              }
+          }
+
+    - name: "actually install MKE"
+      command: "dcos package install --yes kubernetes --options=/home/centos/workspace/mke/mke-options.json"
