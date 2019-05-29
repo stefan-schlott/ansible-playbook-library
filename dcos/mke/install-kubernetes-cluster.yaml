@@ -1,0 +1,54 @@
+- hosts: bootstraps
+  remote_user: centos
+  tasks:
+    - name: "create workspace folders"
+      file:
+        path: "{{ item }}"
+        state: directory
+      loop: [ "/home/centos/workspace", "/home/centos/workspace/kubernetes-clusters" ]
+
+    - name: "create service account keypair"
+      command: "dcos security org service-accounts keypair /home/centos/workspace/kubernetes-clusters/{{ cluster_name }}-private-key.pem /home/centos/workspace/kubernetes-clusters/{{ cluster_name }}-public-key.pem"
+
+    - name: "create service account"
+      command: "dcos security org service-accounts create -p /home/centos/workspace/kubernetes-clusters/{{ cluster_name }}-public-key.pem -d 'Kubernetes Cluster {{ cluster_name }}' kubernetes-{{ cluster_name }}-service-account"
+
+    - name: "create  service account secret"
+      command: "dcos security secrets create-sa-secret --strict /home/centos/workspace/kubernetes-clusters/{{ cluster_name }}-private-key.pem kubernetes-{{ cluster_name }}-service-account kubernetes-{{ cluster_name }}/service-account-secret"
+
+    # Permissions plethora
+    - name: "set permissions"
+      command: "{{ item }}"
+      loop:
+        # master node permissions
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:mesos:master:framework:role:kubernetes-{{ cluster_name }}-role create"
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:mesos:master:task:user:root create"
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:mesos:agent:task:user:root create"
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:mesos:master:reservation:role:kubernetes-{{ cluster_name }}-role create"
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:mesos:master:reservation:principal:kubernetes-{{ cluster_name }}-service-account delete"
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:mesos:master:volume:role:kubernetes-{{ cluster_name }}-role create"
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:mesos:master:volume:principal:kubernetes-{{ cluster_name }}-service-account delete"
+
+        # secret store permissions
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:secrets:default:/kubernetes-{{ cluster_name }}/* full"
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:secrets:list:default:/kubernetes-{{ cluster_name }} read"
+
+        # admin router permissions
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:adminrouter:ops:ca:rw full"
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:adminrouter:ops:ca:ro full"
+
+        # public agent permissions
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:mesos:master:framework:role:slave_public/kubernetes-{{ cluster_name }}-role create"
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:mesos:master:framework:role:slave_public/kubernetes-{{ cluster_name }}-role read"
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:mesos:master:reservation:role:slave_public/kubernetes-{{ cluster_name }}-role create"
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:mesos:master:volume:role:slave_public/kubernetes-{{ cluster_name }}-role create"
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:mesos:master:framework:role:slave_public read"
+        - "dcos security org users grant kubernetes-{{ cluster_name }}-service-account dcos:mesos:agent:framework:role:slave_public read"
+
+    - name: "prepare options.json"
+      copy:
+        dest: "/home/centos/workspace/kubernetes-clusters/kubernetes-{{ cluster_name }}-options.json"
+        content: "{{ cluster_options }}"
+
+    - name: "actually install the cluster"
+      command: "dcos kubernetes cluster create --options=/home/centos/workspace/kubernetes-clusters/kubernetes-{{ cluster_name }}-options.json --yes"

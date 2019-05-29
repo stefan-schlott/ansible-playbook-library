@@ -1,0 +1,23 @@
+---
+cluster_name: "kube1"
+cluster_options: >
+  {
+    "service": {
+       "name": "kubernetes-kube1",
+       "service_account": "kubernetes-kube1-service-account",
+       "service_account_secret": "kubernetes-kube1/service-account-secret",
+       "virtual_network_name": "dcos",
+       "use_agent_docker_certs": true
+    },
+    "kubernetes": {
+      "authorization_mode": "RBAC",
+      "dcos_token_authentication": true,
+      "high_availability": false,
+      "private_node_count": 3,
+      "public_node_count": 0,
+      "private_reserved_resources": {
+        "kube_cpus": 2,
+        "kube_mem": 5120
+      }
+    }
+  }

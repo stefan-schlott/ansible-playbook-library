@@ -1,0 +1,26 @@
+---
+cluster_name: "kube-metrics"
+cluster_options: >
+  {
+    "service": {
+       "name": "kubernetes-kube-metrics",
+       "service_account": "kubernetes-kube-metrics-service-account",
+       "service_account_secret": "kubernetes-kube-metrics/service-account-secret",
+       "virtual_network_name": "dcos",
+       "use_agent_docker_certs": true
+    },
+    "kubernetes": {
+      "authorization_mode": "RBAC",
+      "dcos_token_authentication": true,
+      "high_availability": false,
+      "private_node_count": 3,
+      "public_node_count": 0,
+      "private_reserved_resources": {
+        "kube_cpus": 2,
+        "kube_mem": 5120
+      }
+    },
+    "advanced": {
+      "enable_dcos_kubernetes_cluster_metrics_exporter": true
+    }
+  }
