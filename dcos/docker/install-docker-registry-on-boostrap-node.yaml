@@ -1,0 +1,71 @@
+- hosts: bootstraps
+  remote_user: centos
+
+  tasks:
+    - name: create base workdir(s)
+      file:
+        path: "{{ item }}"
+        state: directory
+      loop: [ "/home/centos/workspace", "/home/centos/workspace/docker-registry", "/home/centos/workspace/docker-registry/certs" ]
+
+    - name: create CA key
+      command: openssl genrsa -out /home/centos/workspace/docker-registry/certs/ca.key 2048
+
+    - name: generate CA certificate
+      command: openssl req -new -nodes -key /home/centos/workspace/docker-registry/certs/ca.key -x509  -subj "/C=DE/ST=Berlin/L=Berlin/O=TestOrg/CN=SignerCA" -days 365 -out /home/centos/workspace/docker-registry/certs/ca.crt
+
+    - name: prepare config file for openssl - just to get SubjectAlternativeNames in
+      copy:
+        dest: "/home/centos/workspace/docker-registry/certs/docker-registry-openssl.conf"
+        content: |
+          [ req ]
+          default_bits = 2048
+          prompt = no
+          default_md = sha256
+          req_extensions = req_ext
+          distinguished_name = dn
+
+          [ dn ]
+          C = "DE"
+          ST = "Berlin"
+          L = "Berlin"
+          O = "TestOrg"
+          OU = "TestOrgUnit"
+          CN = "{{ ansible_default_ipv4.address }}"
+
+          [ req_ext ]
+          subjectAltName = @alt_names
+
+          [ alt_names ]
+          IP.1 = "{{ ansible_default_ipv4.address }}"
+
+    - name: create self-signed csr for registry
+      command: "openssl req -new -key /home/centos/workspace/docker-registry/certs/docker-registry.key -out /home/centos/workspace/docker-registry/certs/docker-registry.csr -config /home/centos/workspace/docker-registry/certs/docker-registry-openssl.conf"
+
+    - name: sign the CSR
+      command: "openssl x509 -req -in /home/centos/workspace/docker-registry/certs/docker-registry.csr -CA /home/centos/workspace/docker-registry/certs/ca.crt -CAkey /home/centos/workspace/docker-registry/certs/ca.key -CAcreateserial -out /home/centos/workspace/docker-registry/certs/docker-registry.crt -days 365 -extensions req_ext -extfile /home/centos/workspace/docker-registry/certs/docker-registry-openssl.conf"
+
+    - name: create docker trust folder
+      become: true
+      file:
+        path: "/etc/docker/certs.d/{{ ansible_default_ipv4.address }}:5000"
+        state: directory
+
+    - name: install ca.crt
+      become: true
+      copy:
+        src: "/home/centos/workspace/docker-registry/certs/ca.crt"
+        dest: "/etc/docker/certs.d/{{ ansible_default_ipv4.address }}:5000/ca.crt"
+        remote_src: yes
+
+    - name: reload docker systemd unit
+      become: true
+      command: "systemctl reload docker"
+
+    - name: run the docker registry by using docker itself
+      become: true
+      command: "docker run -d -p 5000:5000 --restart=always --name registry \
+                  -v /home/centos/workspace/docker-registry/certs:/certs \
+                  -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/docker-registry.crt \
+                  -e REGISTRY_HTTP_TLS_KEY=/certs/docker-registry.key \
+                  registry:2"

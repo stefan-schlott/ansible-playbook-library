@@ -1,0 +1,31 @@
+#- hosts: all
+#  name: Gather facts from all nodes
+#  tasks: [ ]
+
+- hosts: bootstraps
+  tasks:
+    - name: get ca.crt from bootstrap node
+      fetch:
+        src: "/home/centos/workspace/docker-registry/certs/ca.crt"
+        dest: "/tmp/ca.crt"
+        flat: yes
+
+- hosts: masters, agents
+  remote_user: centos
+
+  tasks:
+    - name: create docker trust folder
+      become: true
+      file:
+        path: "/etc/docker/certs.d/{{ hostvars[groups['bootstraps'][0]]['ansible_default_ipv4']['address'] }}:5000"
+        state: directory
+
+    - name: copy ca.crt from bootstrap node to others
+      become: true
+      copy:
+        src: "/tmp/ca.crt"
+        dest: "/etc/docker/certs.d/{{ hostvars[groups['bootstraps'][0]]['ansible_default_ipv4']['address'] }}:5000/ca.crt"
+
+    - name: reload docker systemd unit
+      become: true
+      command: "systemctl reload docker"
