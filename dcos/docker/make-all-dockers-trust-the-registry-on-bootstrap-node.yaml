@@ -29,3 +29,20 @@
     - name: reload docker systemd unit
       become: true
       command: "systemctl reload docker"
+
+    # https://docs.d2iq.com/mesosphere/dcos/1.13/deploying-services/private-docker-registry/#configuring-agents-to-use-a-custom-certificate-for-the-docker-registry
+    - name: make dcos trust the registry as well - STEP1
+      become: true
+      copy:
+        remote_src: yes
+        src: "/etc/docker/certs.d/{{ hostvars[groups['bootstraps'][0]]['ansible_default_ipv4']['address'] }}:5000/ca.crt"
+        dest: "/var/lib/dcos/pki/tls/certs/bootstrap-node-docker-registry-ca.crt"
+
+    - name: make dcos trust the registry as well - STEP2
+      become: true
+      command: "openssl x509 -hash -noout -in /var/lib/dcos/pki/tls/certs/bootstrap-node-docker-registry-ca.crt"
+      register: hash
+
+    - name: make dcos trust the registry as well - STEP3
+      become: true
+      command: "ln -s /var/lib/dcos/pki/tls/certs/bootstrap-node-docker-registry-ca.crt /var/lib/dcos/pki/tls/certs/{{ hash.stdout }}.0"
