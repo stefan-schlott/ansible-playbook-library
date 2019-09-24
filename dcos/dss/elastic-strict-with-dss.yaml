@@ -1,0 +1,59 @@
+- hosts: bootstraps
+  remote_user: centos
+  tasks:
+    - name: "create workspace folders"
+      file:
+        path: "{{ item }}"
+        state: directory
+      loop: [ "/home/centos/workspace", "/home/centos/workspace/elastic" ]
+
+    - name: "create Elastic keypairs"
+      command: "dcos security org service-accounts keypair /home/centos/workspace/elastic/elastic-private-key.pem /home/centos/workspace/elastic/elastic-public-key.pem"
+
+    - name: "create Elastic service account"
+      command: "dcos security org service-accounts create -p /home/centos/workspace/elastic/elastic-public-key.pem -d 'Elastic Service Account' elastic-service-account"
+
+    - name: "create Elastic service account secret"
+      command: "dcos security secrets create-sa-secret --strict /home/centos/workspace/elastic/elastic-private-key.pem elastic-service-account elastic/elastic-private-key"
+
+    - name: "set necessary permissions"
+      command: "{{ item }}"
+      loop:
+        - "dcos security org users grant elastic-service-account dcos:mesos:master:framework:role:elastic-role create"
+        - "dcos security org users grant elastic-service-account dcos:mesos:master:reservation:role:elastic-role create"
+        - "dcos security org users grant elastic-service-account dcos:mesos:master:volume:role:elastic-role create"
+        - "dcos security org users grant elastic-service-account dcos:mesos:master:task:user:nobody create"
+        - "dcos security org users grant elastic-service-account dcos:mesos:master:reservation:principal:elastic-service-account delete"
+        - "dcos security org users grant elastic-service-account dcos:mesos:master:volume:principal:elastic-service-account delete"
+
+    - name: "prepare elastic-options.json"
+      copy:
+        dest: "/home/centos/workspace/elastic/elastic-options.json"
+        content: |
+          {
+            "service": {
+              "service_account": "elastic-service-account",
+              "service_account_secret": "elastic/elastic-private-key"
+            },
+            "master_nodes": {
+              "volume_profile": "elastic-master",
+              "disk_type": "MOUNT"
+            },
+            "data_nodes": {
+              "volume_profile": "elastic-data",
+              "disk_type": "MOUNT"
+            },
+            "ingest_nodes": {
+              "count": 2,
+              "volume_profile": "elastic-ingest",
+              "disk_type": "MOUNT"
+            },
+            "coordinator_nodes": {
+              "count": 1,
+              "volume_profile": "elastic-coordinator",
+              "disk_type": "MOUNT"
+            }
+          }
+          
+    - name: "actually install DC/OS Storage"
+      command: "dcos package install --yes elastic --options=/home/centos/workspace/elastic/elastic-options.json"
