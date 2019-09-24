@@ -1,0 +1,50 @@
+- hosts: bootstraps
+  remote_user: centos
+  tasks:
+    - name: "enable Bootstrap Registry"
+      command: "dcos package repo add 'Bootstrap Registry' https://registry.component.thisdcos.directory/repo"
+      register: return
+      failed_when: "return.rc != 0 and return.rc != 1"
+
+    - name: "create workspace folders"
+      file:
+        path: "{{ item }}"
+        state: directory
+      loop: [ "/home/centos/workspace", "/home/centos/workspace/package-registry" ]
+
+    - name: "create package registry service account"
+      command: "dcos security org service-accounts keypair /home/centos/workspace/package-registry/package-registry-private-key.pem /home/centos/workspace/package-registry/package-registry-public-key.pem"
+
+    - name: "create package-registry service account"
+      command: "dcos security org service-accounts create -p /home/centos/workspace/package-registry/package-registry-public-key.pem -d 'Package Registry Service Account' package-registry-service-account"
+
+    - name: "create package-registry service account secret"
+      command: "dcos security secrets create-sa-secret --strict /home/centos/workspace/package-registry/package-registry-private-key.pem package-registry-service-account package-registry-private-key"
+
+    - name: "set necessary permissions"
+      command: "{{ item }}"
+      loop:
+        - "dcos security org users grant package-registry-service-account dcos:adminrouter:ops:ca:rw full"
+
+    - name: "prepare package-registry-options.json"
+      copy:
+        dest: "/home/centos/workspace/package-registry/package-registry-options.json"
+        content: |
+          {
+              "service": {
+                  "name": "dcos-registry"
+              },
+              "registry": {
+                  "service-account-secret-path":"package-registry-private-key"
+              }
+          }
+
+    - name: "actually install the package registry"
+      command: "dcos package install --yes package-registry --options=/home/centos/workspace/package-registry/package-registry-options.json"
+
+    - name: "enable the Package Registry - to be used with the DC/OS Package Manager"
+      command: "dcos package repo add --index=0 Package-Registry https://dcos-registry.marathon.l4lb.thisdcos.directory/repo"
+      register: setup_package_registry
+      until: setup_package_registry is success
+      retries: 5
+      delay: 20
