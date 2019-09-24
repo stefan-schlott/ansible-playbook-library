@@ -1,0 +1,17 @@
+{
+    "name": "{{ item }}",
+    "description": "{{ item }} disks",
+    "spec": {
+        "provider-selector": {
+            "plugin": "lvm",
+            "matches": {
+                "labels": {
+                    "type": "fast"
+                }
+            }
+        },
+        "mount": {
+            "filesystem": "xfs"
+        }
+    }
+}

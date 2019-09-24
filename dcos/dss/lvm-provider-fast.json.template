@@ -1,0 +1,15 @@
+{
+    "name": "volume-group-fast-{{ item.split('-')[-1] }}",
+    "description": "volume group fast",
+    "spec": {
+        "plugin": {
+            "name": "lvm",
+            "config-version": "latest"
+        },
+        "node": "{{ item }}",
+        "plugin-configuration": {
+            "devices": ["nvme2n1","nvme3n1"]
+        },
+        "labels": {"type": "fast"}
+    }
+}

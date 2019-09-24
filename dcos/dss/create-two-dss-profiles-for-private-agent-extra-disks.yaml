@@ -1,0 +1,90 @@
+- hosts: bootstraps
+  remote_user: centos
+  tasks:
+    - name: "create workspace folders"
+      file:
+        path: "{{ item }}"
+        state: directory
+      loop: [ "/home/centos/workspace", "/home/centos/workspace/dcos-storage" ]
+
+    - name: "get Private Agent long IDs"
+      register: long_ids
+      shell: dcos node list --json | jq '.[] | select(.type == "agent" and .attributes.public_ip != "true") | .id' | tr --delete '"'
+
+#    - name: "get Private Agent short IDs"
+#      register: short_ids
+#      shell: dcos node list --json | jq '.[] | select(.type == "agent" and .attributes.public_ip != "true") | .id | split("-")[5]' | tr --delete '"'
+
+# create the JSON files for the providers
+    - name: "prepare DSS devices provider JSONs"
+      template:
+        src: devices-provider.json.template
+        dest: "/home/centos/workspace/dcos-storage/devices-{{ item }}.json"
+      loop: "{{ long_ids.stdout_lines }}"
+
+    - name: "prepare DSS LVM provider 'fast' JSONs"
+      template:
+        src: lvm-provider-fast.json.template
+        dest: "/home/centos/workspace/dcos-storage/lvm-fast-{{ item }}.json"
+      loop: "{{ long_ids.stdout_lines }}"
+
+    - name: "prepare DSS LVM provider 'superfast' JSONs"
+      template:
+        src: lvm-provider-superfast.json.template
+        dest: "/home/centos/workspace/dcos-storage/lvm-superfast-{{ item }}.json"
+      loop: "{{ long_ids.stdout_lines }}"
+
+# create the providers
+    - name: create devices providers
+      command: "dcos storage provider create /home/centos/workspace/dcos-storage/devices-{{ item }}.json"
+      loop: "{{ long_ids.stdout_lines }}"
+
+    - name: create LVM providers fast
+      command: "dcos storage provider create /home/centos/workspace/dcos-storage/lvm-fast-{{ item }}.json"
+      loop: "{{ long_ids.stdout_lines }}"
+
+    - name: create LVM providers superfast
+      command: "dcos storage provider create /home/centos/workspace/dcos-storage/lvm-superfast-{{ item }}.json"
+      loop: "{{ long_ids.stdout_lines }}"
+
+# create Volume profile JSONs(fast - Cassandra, Kafka, superfast - Elastic)
+    - name: "prepare 'fast' profiles"
+      template:
+        src: fast-profile.json.template
+        dest: "/home/centos/workspace/dcos-storage/fast-profile-{{ item }}.json"
+      loop: ["cassandra","kafka"]
+
+    - name: "prepare 'superfast' profiles"
+      template:
+        src: superfast-profile.json.template
+        dest: "/home/centos/workspace/dcos-storage/superfast-profile-{{ item }}.json"
+      loop: ["elastic"]
+
+# create the profiles
+    - name: "create 'fast' profiles"
+      command: "dcos storage profile create /home/centos/workspace/dcos-storage/fast-profile-{{ item }}.json"
+      loop: ["cassandra","kafka"]
+
+    - name: "create 'superfast' profiles"
+      command: "dcos storage profile create /home/centos/workspace/dcos-storage/superfast-profile-{{ item }}.json"
+      loop: ["elastic"]
+
+# create some volumes (3 for Cassandra, 3 for Kafka, 3 for Elastic - and on random agents)
+    - name: "create 3 Cassandra volumes à 10GB (fast profile) on 3 random agents"
+      command: "dcos storage volume create --name cassandra-volume-{{ item.split('-')[-1] }} --capacity 10240M --profile cassandra --node {{ item }}"
+      loop: "{{ (long_ids.stdout_lines | shuffle)[0:3] }}"
+
+    - name: "create 3 Kafka volumes à 10GB (fast profile) on 3 random agents"
+      command: "dcos storage volume create --name kafka-volume-{{ item.split('-')[-1] }} --capacity 10240M --profile kafka --node {{ item }}"
+      loop: "{{ (long_ids.stdout_lines | shuffle)[0:3] }}"
+
+    - name: "create 3 Elastic volumes à 10GB (fast profile) on 3 random agents"
+      command: "dcos storage volume create --name elastic-volume-{{ item.split('-')[-1] }} --capacity 10240M --profile elastic --node {{ item }}"
+      loop: "{{ (long_ids.stdout_lines | shuffle)[0:3] }}"
+
+
+
+
+
+
+

@@ -1,0 +1,12 @@
+{
+    "name": "devices-{{ item.split('-')[-1] }}",
+    "description": "Devices provider",
+    "spec": {
+        "plugin": {
+            "name": "devices",
+            "config-version": "latest"
+        },
+        "node": "{{ item }}",
+        "plugin-configuration": {}
+    }
+}

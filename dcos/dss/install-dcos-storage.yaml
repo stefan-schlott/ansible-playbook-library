@@ -1,0 +1,61 @@
+- hosts: bootstraps
+  remote_user: centos
+  tasks:
+    - name: "create workspace folders"
+      file:
+        path: "{{ item }}"
+        state: directory
+      loop: [ "/home/centos/workspace", "/home/centos/workspace/dcos-storage" ]
+
+    - name: "download the DC/OS Storage dcos file"
+      get_url:
+        url: "https://s3.amazonaws.com/dcos-storage-artifacts/dss/build/tag/v1.0.0/storage-v1.0.0.dcos"
+        dest: "/home/centos/workspace/dcos-storage/storage-v1.0.0.dcos"
+
+    - name: "add DSS package to DC/OS Package Registry"
+      command: "dcos registry add --dcos-file /home/centos/workspace/dcos-storage/storage-v1.0.0.dcos"
+
+    - name: "create DSS service account"
+      command: "dcos security org service-accounts keypair /home/centos/workspace/dcos-storage/dcos-storage-private-key.pem /home/centos/workspace/dcos-storage/dcos-storage-public-key.pem"
+
+    - name: "create DSS service account"
+      command: "dcos security org service-accounts create -p /home/centos/workspace/dcos-storage/dcos-storage-public-key.pem -d 'DC/OS Storage Service Account' dcos-storage-service-account"
+
+    - name: "create DSS service account secret"
+      command: "dcos security secrets create-sa-secret --strict /home/centos/workspace/dcos-storage/dcos-storage-private-key.pem dcos-storage-service-account storage/dcos-storage-private-key"
+
+    - name: "set necessary permissions"
+      command: "{{ item }}"
+      loop:
+        - "dcos security org users grant dcos-storage-service-account dcos:adminrouter:ops:slave full"
+        - "dcos security org users grant dcos-storage-service-account dcos:secrets:default:/storage/* full"
+        - "dcos security org users grant dcos-storage-service-account dcos:secrets:list:default:/storage read"
+        - "dcos security org users grant dcos-storage-service-account dcos:adminrouter:ops:ca:rw full"
+        - "dcos security org users grant dcos-storage-service-account dcos:adminrouter:ops:ca:ro full"
+        - "dcos security org users grant dcos-storage-service-account dcos:mesos:master:framework:principal:dcos-storage-service-account full"
+        - "dcos security org users grant dcos-storage-service-account dcos:mesos:master:framework:role full"
+        - "dcos security org users grant dcos-storage-service-account dcos:mesos:master:reservation delete"
+        - "dcos security org users grant dcos-storage-service-account dcos:mesos:master:reservation:role full"
+        - "dcos security org users grant dcos-storage-service-account dcos:mesos:master:block_disk:role full"
+        - "dcos security org users grant dcos-storage-service-account dcos:mesos:master:mount_disk:role full"
+        - "dcos security org users grant dcos-storage-service-account dcos:mesos:master:raw_disk:role full"
+        - "dcos security org users grant dcos-storage-service-account dcos:mesos:agent:endpoint:path:/api/v1 full"
+        - "dcos security org users grant dcos-storage-service-account dcos:mesos:agent:resource_provider_config full"
+        - "dcos security org users grant dcos-storage-service-account dcos:mesos:agent:resource_provider read"
+          
+
+    - name: "prepare dcos-storage-options.json"
+      copy:
+        dest: "/home/centos/workspace/dcos-storage/dcos-storage-options.json"
+        content: |
+          {
+              "service": {
+                  "enforce-authorization": true,
+                  "principal": "dcos-storage-service-account",
+                  "secret-name": "storage/dcos-storage-private-key"
+              }
+          }
+
+    - name: "actually install DC/OS Storage"
+      command: "dcos package install --yes storage --options=/home/centos/workspace/dcos-storage/dcos-storage-options.json"
+
