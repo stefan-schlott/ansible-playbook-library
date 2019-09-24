@@ -1,0 +1,45 @@
+- hosts: bootstraps
+  remote_user: centos
+  tasks:
+    - name: "create workspace folders"
+      file:
+        path: "{{ item }}"
+        state: directory
+      loop: [ "/home/centos/workspace", "/home/centos/workspace/kafka" ]
+
+    - name: "create Kafka keypairs"
+      command: "dcos security org service-accounts keypair /home/centos/workspace/kafka/kafka-private-key.pem /home/centos/workspace/kafka/kafka-public-key.pem"
+
+    - name: "create Kafka service account"
+      command: "dcos security org service-accounts create -p /home/centos/workspace/kafka/kafka-public-key.pem -d 'Kafka Service Account' kafka-service-account"
+
+    - name: "create Kafka service account secret"
+      command: "dcos security secrets create-sa-secret --strict /home/centos/workspace/kafka/kafka-private-key.pem kafka-service-account kafka/kafka-private-key"
+
+    - name: "set necessary permissions"
+      command: "{{ item }}"
+      loop:
+        - "dcos security org users grant kafka-service-account dcos:mesos:master:framework:role:kafka-role create"
+        - "dcos security org users grant kafka-service-account dcos:mesos:master:reservation:role:kafka-role create"
+        - "dcos security org users grant kafka-service-account dcos:mesos:master:volume:role:kafka-role create"
+        - "dcos security org users grant kafka-service-account dcos:mesos:master:task:user:nobody create"
+        - "dcos security org users grant kafka-service-account dcos:mesos:master:reservation:principal:kafka-service-account delete"
+        - "dcos security org users grant kafka-service-account dcos:mesos:master:volume:principal:kafka-service-account delete"
+
+    - name: "prepare kafka-options.json"
+      copy:
+        dest: "/home/centos/workspace/kafka/kafka-options.json"
+        content: |
+          {
+            "service": {
+              "service_account": "kafka-service-account",
+              "service_account_secret": "kafka/kafka-private-key"
+            },
+            "brokers": {
+              "volume_profile": "kafka",
+              "disk_type": "MOUNT"
+            }
+          }
+          
+    - name: "actually install DC/OS Storage"
+      command: "dcos package install --yes kafka --options=/home/centos/workspace/kafka/kafka-options.json"

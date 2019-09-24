@@ -1,0 +1,45 @@
+- hosts: bootstraps
+  remote_user: centos
+  tasks:
+    - name: "create workspace folders"
+      file:
+        path: "{{ item }}"
+        state: directory
+      loop: [ "/home/centos/workspace", "/home/centos/workspace/cassandra" ]
+
+    - name: "create Cassandra keypairs"
+      command: "dcos security org service-accounts keypair /home/centos/workspace/cassandra/cassandra-private-key.pem /home/centos/workspace/cassandra/cassandra-public-key.pem"
+
+    - name: "create Cassandra service account"
+      command: "dcos security org service-accounts create -p /home/centos/workspace/cassandra/cassandra-public-key.pem -d 'Cassandra Service Account' cassandra-service-account"
+
+    - name: "create Cassandra service account secret"
+      command: "dcos security secrets create-sa-secret --strict /home/centos/workspace/cassandra/cassandra-private-key.pem cassandra-service-account cassandra/cassandra-private-key"
+
+    - name: "set necessary permissions"
+      command: "{{ item }}"
+      loop:
+        - "dcos security org users grant cassandra-service-account dcos:mesos:master:framework:role:cassandra-role create"
+        - "dcos security org users grant cassandra-service-account dcos:mesos:master:reservation:role:cassandra-role create"
+        - "dcos security org users grant cassandra-service-account dcos:mesos:master:volume:role:cassandra-role create"
+        - "dcos security org users grant cassandra-service-account dcos:mesos:master:task:user:nobody create"
+        - "dcos security org users grant cassandra-service-account dcos:mesos:master:reservation:principal:cassandra-service-account delete"
+        - "dcos security org users grant cassandra-service-account dcos:mesos:master:volume:principal:cassandra-service-account delete"
+
+    - name: "prepare cassandra-options.json"
+      copy:
+        dest: "/home/centos/workspace/cassandra/cassandra-options.json"
+        content: |
+          {
+            "service": {
+              "service_account": "cassandra-service-account",
+              "service_account_secret": "cassandra/cassandra-private-key"
+            },
+            "nodes": {
+              "volume_profile": "cassandra",
+              "disk_type": "MOUNT"
+            }
+          }
+
+    - name: "actually install DC/OS Storage"
+      command: "dcos package install --yes cassandra --options=/home/centos/workspace/cassandra/cassandra-options.json"
