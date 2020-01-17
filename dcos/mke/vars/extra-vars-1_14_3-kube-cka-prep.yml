@@ -1,0 +1,26 @@
+---
+cluster_name: "kube-cka-prep"
+cluster_options: >
+  {
+    "service": {
+       "name": "kubernetes-kube-cka-prep",
+       "service_account": "kubernetes-kube-cka-prep-service-account",
+       "service_account_secret": "kubernetes-kube-cka-prep/service-account-secret",
+       "virtual_network_name": "dcos",
+       "use_agent_docker_certs": true
+    },
+    "kubernetes": {
+      "authorization_mode": "RBAC",
+      "dcos_token_authentication": true,
+      "high_availability": true,
+      "private_node_count": 3,
+      "public_node_count": 0,
+      "private_reserved_resources": {
+        "kube_cpus": 2,
+        "kube_mem": 5120
+      },
+      "metrics_exporter" : {
+        "enabled": true
+      }
+    }
+  }
