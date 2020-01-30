@@ -84,7 +84,7 @@
 
     - name: Serve bootstrap files via dockerized nginx
       docker_container:
-        name: bootstrapnginx
+        name: yum-repo-mirror
         image: nginx
         ports:
           - "{{ mirror_nginx_port }}:80"
