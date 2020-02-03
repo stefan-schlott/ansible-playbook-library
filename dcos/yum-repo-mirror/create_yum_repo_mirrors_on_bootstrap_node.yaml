@@ -1,4 +1,4 @@
-- hosts: bootstraps
+- hosts: "{{ host_group | default('bootstraps') }}"
   become: true
   gather_facts: no
   vars:

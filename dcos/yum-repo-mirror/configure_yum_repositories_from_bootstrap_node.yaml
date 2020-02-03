@@ -1,4 +1,4 @@
-- hosts: all
+- hosts: "{{ host_group | default('all') }}"
   become: true
   vars:
     archive_configured_repos: true
