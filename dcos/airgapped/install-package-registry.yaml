@@ -3,8 +3,8 @@
   tasks:
     - name: "enable Bootstrap Registry"
       command: "dcos package repo add 'Bootstrap Registry' https://registry.component.thisdcos.directory/repo"
-      register: return
-      failed_when: "return.rc != 0 and return.rc != 1"
+      register: return_value
+      failed_when: "return_value.rc != 0 and return_value.rc != 1"
 
     - name: "create workspace folders"
       file:
